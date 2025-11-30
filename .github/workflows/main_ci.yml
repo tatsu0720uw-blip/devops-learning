@@ -1,41 +1,47 @@
-name: CI/CD Pipeline with Docker
+name: CI/CD Pipeline to GHCR
 
-# ワークフローを実行するトリガーを定義
 on:
   push:
     branches:
-      - main # mainブランチにプッシュされたら実行
+      - main
 
-# 実行するジョブ（タスク群）を定義
+# ▼ 変更点1: GITHUB_TOKENの権限設定（パッケージへの書き込み権限を付与）
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  build-and-test:
-    # ジョブを実行する仮想マシンを指定
+  build-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. コードのチェックアウト (リポジトリの内容をVMに持ってくる)
       - name: Checkout Code
         uses: actions/checkout@v4
         
-      # 2. Dockerイメージのビルド (最も重要なCIステップ)
-      - name: Build Docker Image
-        uses: docker/build-push-action@v5
+      # ▼ 変更点2: GitHub Container Registry (GHCR) へのログイン
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          context: .  # Dockerfileがある場所 (現在のディレクトリ)
-          push: false # 今回はテストのためプッシュはしない
-          tags: devops-app:latest
-          
-      # 3. テストの実行 (CIの品質保証ステップ)
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # テスト実行（Linting）
       - name: Run Linting Test (Syntax Check)
         run: |
-          # 仮想マシン内でPython環境を設定し、テストツールをインストール
           python -m pip install --upgrade pip
           pip install flake8
+          flake8 .
           
-          # flake8 (Pythonの構文チェッカー) を実行
-          # ここでエラーがあれば、パイプラインは失敗する
-          flake8 . --ignore=E501
-          
-      # 4. (オプション) ビルド成功のメッセージ
+      # ▼ 変更点3: ビルドしてプッシュを実行
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # ここを true にすることで、ビルドしたイメージをレジストリに保存します
+          push: true
+          # タグの指定: ghcr.io/ユーザー名/イメージ名:タグ
+          tags: ghcr.io/tatsu0720uw-blip/devops-app:latest
+
       - name: Success Message
-        run: echo "CI Pipeline Passed! Image Built and Tests Succeeded."
+        run: echo "CD Complete! Image pushed to GitHub Container Registry."
